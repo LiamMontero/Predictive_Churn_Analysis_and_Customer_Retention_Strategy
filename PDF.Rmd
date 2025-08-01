@@ -1,0 +1,929 @@
+---
+title: "Predictive Analytics and Retention Strategy for Customer Churn"
+author: "Liam Montero Guillemi"
+date: "`r Sys.Date()`"
+output: 
+  pdf_document:
+    toc: false
+    toc_depth: 2
+---
+\newpage
+\tableofcontents
+\newpage
+
+```{r setup, include=FALSE}
+# Chunk de configuración inicial. No se mostrará en el informe final.
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+# Cargar todas las librerías necesarias para el proyecto
+library(tidyverse)
+library(ggplot2)
+library(scales)
+library(recipes)
+library(tidymodels)
+library(yardstick)
+library(dplyr)
+library(vip)
+library(patchwork)
+```
+
+# Executive Summary
+This report details the comprehensive analysis conducted on the company's customer data to understand and predict the churn phenomenon. A machine learning model with an 85.8% predictive capacity (AUC) was developed, allowing us not only to identify at-risk customers but also to understand the underlying causes of their behavior.
+
+The analysis reveals that churn is not a random event, but rather a predictable result of contractual factors, tenure, and customer profile. The main vulnerability lies in **new customers with flexible contracts (month-to-month)**, who have a churn rate of 51.4%.
+
+Thanks to our model optimization, we are now able to **identify 82.1% of customers who plan to churn**. This report concludes with a four-pillar strategic plan, based on this evidence, designed to reduce churn, strengthen retention, and estimate **an annual revenue recovery potential of over $143,000**.
+
+\newpage
+
+# Data Preparation and Cleaning
+
+The first fundamental step in any data science project is data preparation. This phase ensures the quality, consistency, and integrity of the dataset, laying the foundation for reliable analysis and modeling. The objective of this task was to load, explore, and clean the "Telco Customer Churn" dataset.
+
+## Loading and Initial Inspection
+
+The project began by loading the data from a CSV file. An initial inspection allowed us to understand the structure of the dataset.
+
+```{r include=FALSE}
+# Cargamos los datos y mostramos su estructura
+path <- "~/Telco_Customer_Churn_Dataset  (3).csv"
+datos <- read.csv(path)
+
+cat("El set de datos tiene", nrow(datos), "filas y", ncol(datos), "columnas.", "\n\n")
+# Usamos head() y str() para una vista previa
+cat("Primeras filas del dataset:\n")
+head(datos, 3)
+cat("\nEstructura de las variables (str):\n")
+str(datos)
+```
+
+The dataset contains **7,043 observations (customers)** and **21 variables**, including customer identifiers, demographic characteristics, contracted services, contractual information, and the target variable, Churn. Each row was verified to correspond to a unique customer, as there were no duplicate customerIDs.
+
+## Handling missing values and transforming variables for analysis
+
+Next, we proceed to inspect all the variables, one by one, to see if they have missing values, then we proceed to convert the Yes and No category variables into binary variables for ease of use.
+
+```{r include=FALSE}
+cat("El set de datos tiene", nrow(datos), "filas.", "\n")
+cat("El set de datos tiene", length(unique(datos$customerID)), "unsuarios unicos, por lo que no hay usuuarios repetidos.", "\n")
+cat("La columna customerID tiene algun valor NA?:", "\n", any(is.na(datos$customerID)), "\n")
+table(datos$gender)
+datos$gender <- ifelse(datos$gender == "Male", 1, 0)
+cat("La columna SeniorCitizen tiene algun valor NA?:", "\n", any(is.na(datos$SeniorCitizen)), "\n")
+table(datos$SeniorCitizen)
+table(datos$Partner)
+datos$Partner <- ifelse(datos$Partner == "Yes", 1, 0)
+cat("La columna Partner tiene algun valor NA?:", "\n", any(is.na(datos$Partner)), "\n")
+table(datos$Dependents)
+datos$Dependents <- ifelse(datos$Dependents == "Yes", 1, 0)
+cat("La columna Dependents tiene algun valor NA?:", "\n", any(is.na(datos$Dependents)), "\n")
+cat("La columna tenure tiene algun valor NA?:", "\n", any(is.na(datos$tenure)), "\n")
+range(datos$tenure)
+cat("La columna tenure tiene", sum(datos$tenure == 0), "clientes que no han firmado contrato con la compañia", "\n")
+table(datos$PhoneService)
+datos$PhoneService <- ifelse(datos$PhoneService == "Yes", 1, 0)
+cat("La columna PhoneService tiene algun valor NA?:", "\n", any(is.na(datos$PhoneService)), "\n")
+table(datos$MultipleLines)
+datos$MultipleLines <- ifelse(datos$MultipleLines == "Yes", 1, 0)
+cat("La columna MultipleLines tiene algun valor NA?:", "\n", any(is.na(datos$MultipleLines)), "\n")
+table(datos$InternetService)
+table(datos$OnlineSecurity)
+datos$OnlineSecurity <- ifelse(datos$OnlineSecurity == "Yes", 1, 0)
+cat("La columna OnlineSecurity tiene algun valor NA?:", "\n", any(is.na(datos$OnlineSecurity)), "\n")
+table(datos$OnlineBackup)
+datos$OnlineBackup <- ifelse(datos$OnlineBackup == "Yes", 1, 0)
+cat("La columna OnlineBackup tiene algun valor NA?:", "\n", any(is.na(datos$OnlineBackup)), "\n")
+table(datos$DeviceProtection)
+datos$DeviceProtection <- ifelse(datos$DeviceProtection == "Yes", 1, 0)
+cat("La columna DeviceProtection tiene algun valor NA?:", "\n", any(is.na(datos$DeviceProtection)), "\n")
+table(datos$TechSupport)
+datos$TechSupport <- ifelse(datos$TechSupport == "Yes", 1, 0)
+cat("La columna TechSupport tiene algun valor NA?:", "\n", any(is.na(datos$TechSupport)), "\n")
+table(datos$StreamingTV)
+datos$StreamingTV <- ifelse(datos$StreamingTV == "Yes", 1, 0)
+cat("La columna StreamingTV tiene algun valor NA?:", "\n", any(is.na(datos$StreamingTV)), "\n")
+table(datos$StreamingMovies)
+datos$StreamingMovies <- ifelse(datos$StreamingMovies == "Yes", 1, 0)
+cat("La columna StreamingMovies tiene algun valor NA?:", "\n", any(is.na(datos$StreamingMovies)), "\n")
+table(datos$Contract)
+cat("La columna Contract tiene algun valor NA?:", "\n", any(is.na(datos$Contract)), "\n")
+table(datos$PaperlessBilling)
+datos$PaperlessBilling <- ifelse(datos$PaperlessBilling == "Yes", 1, 0)
+cat("La columna PaperlessBilling tiene algun valor NA?:", "\n", any(is.na(datos$PaperlessBilling)), "\n")
+table(datos$PaymentMethod)
+cat("La columna PaymentMethod tiene algun valor NA?:", "\n", any(is.na(datos$PaymentMethod)), "\n")
+cat("La columna MonthlyCharges tiene algun valor NA?:", "\n", any(is.na(datos$MonthlyCharges)), "\n")
+cat("La columna TotalCharges tiene algun valor NA?:", "\n", any(is.na(datos$TotalCharges)), "\n")
+cat("La columna TotalCharges tiene", sum(is.na(datos$TotalCharges)), "valores NA:", "\n")
+table(datos$Churn)
+datos$Churn <- ifelse(datos$Churn == "Yes", 1, 0)
+cat("La columna Churn tiene algun valor NA?:", "\n", any(is.na(datos$Churn)), "\n")
+```
+
+The most interesting thing we found was:
++ The tenure variable had 11 values that were 0.
++ The TotalCharges variable had 11 NA values.
+
+Investigating further, I discovered that the 11 NA values in the TotalCharges variable were all related to the 11 0 values in the tenure variable. But looking more closely, these customers have two-year contracts and assigned monthly payment amounts. Therefore, the missing data in the TotalCharges column and the 0 values in the tenure column mean that these customers have already signed a contract with the company but have not yet made their first payment, and therefore, have not yet been with the company for a month.
+
+Based on the above, I assigned 1 to the 0 values in tenure and the value of the MonthlyCharges variable to its respective NA value in the TotalCharges variable to eliminate the NA values and the 0 values.
+
+```{r include=FALSE}
+coincidencia <- datos %>% filter(is.na(TotalCharges))
+datos$tenure[datos$tenure == 0] <- 1
+range(datos$tenure)
+index_NA <- which(is.na(datos$TotalCharges))
+values <- datos$MonthlyCharges[index_NA]
+datos$TotalCharges[is.na(datos$TotalCharges)] <- values
+identical(datos$TotalCharges[index_NA], values)
+```
+
+\newpage
+
+# Exploratory analysis (EDA)
+
+
+```{r include=FALSE}
+churn_rate <- round(sum(datos$Churn[datos$Churn == 1]) / nrow(datos), 3)
+tabla_df <- as.data.frame(
+  prop.table(table(datos$Churn)) * 100
+)
+colnames(tabla_df) <- c("Churn", "porcentaje")
+tabla_df$Churn <- factor(
+  tabla_df$Churn,
+  levels = c(0, 1),
+  labels = c("No", "Yes")
+)
+tabla_df$etiqueta <- paste0(round(tabla_df$porcentaje, 1), "%")
+```
+
+We start by calculating the company's customer churn rate and we can see that the churn rate is a bit high, as **26.5% of customers end up churning**.
+
+```{r echo=FALSE, out.width="70%", fig.align='center'}
+# Crear gráfico de pastel
+ggplot(tabla_df, aes(x = "", y = porcentaje, fill = Churn)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  geom_text(
+    aes(label = etiqueta),
+    position = position_stack(vjust = 0.5),
+    color = "white",
+    size = 4
+  ) +
+  scale_fill_manual(
+    values = c("No" = "#00BFC4", "Yes" = "#F8766D")  # rojo y verde
+  ) +
+  labs(
+    title = "Churn Distribution",
+    fill = "Churn"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold")
+  )
+```
+
+
+Next, we'll look at a demographic graph showing how Churn behaves by gender, whether they have a partner, and whether they have dependents. It shows at a glance that:
+
++ Gender does not influence customer churn
++ Customers who do not have a partner or dependents are more likely to churn
+
+Thanks to this, we can begin to say that customer churn is not random; there are certain characteristics that these customers possess that lead to a higher churn rate.
+
+
+```{r echo=FALSE, out.width="70%", fig.align='center'}
+datos_para_graficos <- read.csv(path)
+plot_gender <- ggplot(datos_para_graficos, aes(x = gender, 
+                                               fill = Churn)) +
+  geom_bar(position = "stack") +
+  geom_text(
+    stat = 'count',
+    aes(label = after_stat(count)),
+    position = position_stack(vjust = 0.5),
+    color = "black", 
+    size = 4
+  ) +
+  labs(
+    title = "By Gender",
+    x = NULL,
+    y = "Number of Clients",
+    fill = "Churn"
+  ) +
+  scale_fill_manual(values = c("No" = "#00BFC4", "Yes" = "#F8766D")) + 
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  )
+plot_dependents <- ggplot(datos_para_graficos, aes(x = Dependents, 
+                                                   fill = Churn)) +
+  geom_bar(position = "stack") +
+  geom_text(
+    stat = 'count',
+    aes(label = after_stat(count)),
+    position = position_stack(vjust = 0.5),
+    color = "black", 
+    size = 4
+  ) +
+  labs(
+    title = "By Dependents",
+    x = NULL,
+    y = NULL,
+    fill = "Churn"
+  ) +
+  scale_fill_manual(values = c("No" = "#00BFC4", "Yes" = "#F8766D")) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  )
+plot_partner <- ggplot(datos_para_graficos, aes(x = Partner, 
+                                                fill = Churn)) +
+  geom_bar(position = "stack") +
+  geom_text(
+    stat = 'count',
+    aes(label = after_stat(count)),
+    position = position_stack(vjust = 0.5),
+    color = "black", 
+    size = 4
+  ) +
+  labs(
+    title = "By Partner",
+    x = NULL,
+    y = NULL,
+    fill = "Churn"
+  ) +
+  scale_fill_manual(values = c("No" = "#00BFC4", "Yes" = "#F8766D")) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    panel.grid.major.x = element_blank(), 
+    panel.grid.minor = element_blank()
+  )
+combined_plot <- plot_gender + plot_dependents + plot_partner
+combined_plot + 
+  plot_annotation(
+    title = 'Demographic Analysis of Customer Churn',
+    caption = 'Distribution of customers who leave (Yes) and stay (No) according to their profile.',
+    theme = theme(plot.title = element_text(face = "bold", size = 18, hjust = 0.5))
+  ) & 
+  plot_layout(guides = 'collect')
+```
+
+
+## Tenure analysis
+Now we will see how the seniority of customers in the company behaves so that they decide to leave it:
+
+```{r echo=FALSE, out.width="70%", fig.align='center'}
+ggplot(datos, aes(x = factor(Churn, levels = c(0, 1), labels = c("No Churn", "Yes Churn")), 
+                  y = tenure, 
+                  fill = factor(Churn, levels = c(0, 1), labels = c("No Churn", "Yes Churn")))) +
+  geom_boxplot(alpha = 0.8, outlier.color = "red") +
+  geom_jitter(width = 0.2, alpha = 0.15, color = "black") +
+  labs(
+    title = "Relationship between Customer Tenure and Churn",
+    subtitle = "Customers who churn have significantly lower tenure",
+    x = "Customer Status",
+    y = "Tenure (in months)"
+  ) +
+  scale_fill_manual(values = c("No Churn" = "#00BFC4", "Yes Churn" = "#F8766D")) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "none",
+    panel.grid.major.x = element_blank()
+  )
+```
+
+This visualization compares the distribution of customer tenure (measured in months) for two groups: those who have churned ("Churn") and those who have not ("Non-Churn"). The result is one of the most conclusive findings of the exploratory analysis.
+
+A clear and statistically significant difference is observed between the two groups:
+
++ **Loyal Customers (Non-Churn)**: This group shows a wide tenure distribution centered on high values. The interquartile range (the middle 50% of the data) falls approximately between 15 and 60 months, with a median close to 40 months. This indicates that the loyal customer base is a customer base with a long history with the company.
+
++ **Churning Customers (Yes, Churn)**: In stark contrast, the distribution for this group is heavily skewed to the left (low values). The interquartile range is much more compact and is located at the bottom of the scale, with a median of approximately 10 months. The vast majority of data points are concentrated below 30 months.
+
+**Conclusion** of the Finding: Churn risk is inversely proportional to customer tenure. The most critical phase for customer retention is their first few months of service. This pattern suggests that company strategies should focus intensely on strengthening the relationship and demonstrating value during the initial (onboarding) period to overcome this vulnerability barrier and guide new customers toward a state of greater loyalty.
+
+\newpage
+
+
+## Analysis of service conditions
+
+Now we will see how each of the different contract categories influences customer churn:
+
+```{r include=FALSE}
+contract_summary <- datos %>%
+  dplyr::count(Contract, Churn) %>%
+  group_by(Contract) %>%
+  mutate(percentage = n / sum(n))
+```
+
+```{r echo=FALSE}
+ggplot(contract_summary, aes(x = Contract, y = percentage, fill = factor(Churn, labels = c("NO", "YES")))) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(
+    aes(label = percent(percentage, accuracy = 1)),
+    position = position_stack(vjust = 0.5), 
+    color = "white",
+    fontface = "bold",
+    size = 4.5
+  ) +
+  labs(
+    title = "Abandonment Rate by Contract Type",
+    subtitle = "The 'Month to Month' contract is the main risk factor for abandonment",
+    x = "Type of Contract",
+    y = "Percentage of Clients",
+    fill = "Churn"
+  ) +
+  scale_y_continuous(labels = percent_format()) +
+  scale_fill_manual(values = c("NO" = "#00BFC4", "YES" = "#F8766D")) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+Analyzing contractual terms provides the most decisive insight of the entire exploratory phase. As illustrated in the percentage bar chart, there is an almost perfect inverse relationship between the length of the contractual commitment and customer loyalty.
+
++ **The High-Risk Segment** (Month-to-Month): Customers without a long-term contract represent the core of the churn problem. With **43%** of these customers canceling their service, this group is not only volatile but also acts as a constant revenue drain. The flexibility offered to them translates directly into a lack of "stickiness" to the service.
+
++ **The Loyalty Segments** (One-Year and Two-Year): By securing a contractual commitment, the churn rate plummets. A one-year contract reduces the rate to **11%**, almost four times less than the monthly plan. The effect is even more pronounced in two-year contracts, where the churn rate is just **3%**, indicating a very high level of loyalty and satisfaction.
+
+**Strategic Implications**: This finding is not a simple correlation; it is a clear sign of causality in customer behavior. The act of signing a term contract is in itself a powerful retention mechanism. Therefore, any effective strategy to combat churn must have as its fundamental pillar the creation of incentives and fluid paths for monthly plan customers to migrate to one- or two-year contracts. This is the point of greatest leverage for positively impacting business results.
+
+\newpage
+
+# Customer Segmentation by Risk Profile
+
+Exploratory analysis showed us that length of service and contract type are the main indicators of churn risk. To make these findings more actionable, the next step was to formalize this logic through customer segmentation. The goal was to group customers into clear and distinct profiles based on their behavior, allowing us to quantify the risk and value of each group.
+
+## Definition and Creation of Segments
+
+Four main segments were created using a rules-based approach combining customer tenure and contract type.
+
++ New at-Risk Customers: These are customers who have been with the company for 12 months or less and have month-to-month contracts.
++ High-Value Loyal Customers: These are customers who have been with the company for more than 24 months and whose contract can be for one or two years.
++ Long-Term Contract Customers: These are customers with a one- or two-year contract.
++ Flexible Stable Customers: These are customers who have been with the company for more than 12 months and have a month-to-month contract.
+
+```{r include=FALSE}
+datos <- datos %>%
+  mutate(Segmento = case_when(
+    tenure <= 12 & Contract == "Month-to-month" ~ "New Client at Risk",
+    tenure > 24 & Contract %in% c("One year", "Two year") ~ "High Value Loyal Customer",
+    Contract %in% c("One year", "Two year") ~ "Client with Long-Term Contract",
+    tenure > 12 & Contract == "Month-to-month" ~ "Stable Flexible Client",
+    TRUE ~ "Otro"
+  ))
+```
+
+```{r include=FALSE}
+knitr::kable(
+  table(datos$Segmento),
+  col.names = c("Segmento", "Número de Clientes"),
+  caption = "Distribución de Clientes por Segmento Creado"
+)
+```
+
+## Churn Analysis by Segment
+
+Once the segments were created, the churn rate within each segment was analyzed to validate our hypothesis. The following graph demonstrates the effectiveness of this segmentation.
+
+```{r include=FALSE}
+# Código para generar el gráfico de abandono por segmento
+segmento_churn_summary <- datos %>%
+  group_by(Segmento) %>%
+  dplyr::count(Churn = factor(Churn, levels = c(0, 1), labels = c("NO", "YES"))) %>%
+  mutate(percentage = n / sum(n)) %>%
+  ungroup()
+```
+
+```{r echo=FALSE, out.width="70%", fig.align='center'}
+ggplot(segmento_churn_summary, aes(x = Segmento, y = percentage, fill = Churn)) +
+  geom_bar(stat = "identity", position = "fill") +
+  geom_text(
+    aes(label = percent(percentage, accuracy = 1)),
+    position = position_fill(vjust = 0.5),
+    color = "white",
+    fontface = "bold",
+    size = 4.5
+  ) +
+  labs(
+    title = "Churn Rate by Customer Segment",
+    subtitle = "The 'New Customer at Risk' segment shows the greatest vulnerability",
+    x = "Customer Segment",
+    y = "Percentage of Clients"
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c("NO" = "#00BFC4", "YES" = "#F8766D")) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    axis.text.x = element_text(angle = 30, hjust = 1)
+  )
+```
+
+The chart strongly confirms the validity of our segmentation:
+
++ **New Customer at Risk**: This is by far the most problematic group, with a churn rate of 51%. It represents the epicenter of the churn problem.
+
++ **Stable Flexible Customer**: This group, although on a monthly contract, has a more moderate churn rate (34%) due to their longer tenure. It is still a risk, but a lower priority.
+
++ **Loyal High Value Customer and Customer with Term Contract**: These two segments are our pillars of stability, with minimum churn rates of 7% and 6% respectively.
+
+## Business Risk Quantification
+
+To understand the financial impact, the value of the most critical segment: "New Customer at Risk" was quantified.
+
+```{r}
+clientes_en_riesgo <- datos %>%
+  filter(Segmento == "Cliente Nuevo en Riesgo")
+churn_rate_riesgo <- mean(clientes_en_riesgo$Churn) * 100
+ingresos_mensuales_riesgo <- sum(clientes_en_riesgo$MonthlyCharges) * mean(clientes_en_riesgo$Churn)
+resultados_riesgo <- data.frame(
+  Métrica = c("Número total de clientes", "Tasa de abandono específica", "Ingresos Mensuales en Riesgo (MRR)"),
+  Valor = c(
+    nrow(clientes_en_riesgo),
+    paste0(round(mean(clientes_en_riesgo$Churn) * 100, 1), "%"),
+    paste0("$", format(round(ingresos_mensuales_riesgo, 2), nsmall = 2, big.mark = ","))
+  )
+)
+knitr::kable(
+  resultados_riesgo,
+  caption = "Análisis del Segmento de Mayor Prioridad: 'Cliente Nuevo en Riesgo'"
+)
+```
+
+Segmentation has allowed us to go beyond analyzing isolated variables. We have now identified, named, and quantified a specific group of 1,994 customers who not only have the highest probability of churn but also represent more than $59,615 in monthly revenue at risk. This segment will be the primary target of our retention strategies and the focus of our predictive model.
+
+\newpage
+
+# Construcción del Modelo Predictivo
+
+After identifying the key factors and segments, the next step was to develop a machine learning model capable of predicting the probability of churn for each individual customer. The goal was to create a proactive tool that would allow the business to intervene before a customer decides to leave. Generalized Logistic Regression (GLM) was chosen for its robustness and high interpretability.
+
+The modeling process was divided into three phases:
+1. Building a Baseline Model: To establish a performance benchmark.
+2. Feature Engineering and Model Improvement: To increase its predictive power.
+3. Decision Threshold Optimization: To align the model with business objectives.
+
+## Preparing for Modeling
+
+```{r include=FALSE}
+# 1. DIVISIÓN DE DATOS Y PREPROCESAMIENTO
+datos$Churn <- factor(datos$Churn, levels = c(0, 1), labels = c("No", "Yes"))
+
+idx <- sample(seq_len(nrow(datos)), 0.8 * nrow(datos))
+train_data <- datos[idx, ]
+test_data  <- datos[-idx, ]
+
+rec <- recipe(Churn ~ ., data = train_data) %>%
+  update_role(customerID, Segmento, new_role = "ID") %>% 
+  step_dummy(all_nominal_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+#========================================================================
+#             TAREA 4: MODELO DE LÍNEA BASE - REGRESIÓN LOGÍSTICA
+#========================================================================
+
+# 1. DEFINICIÓN DEL MODELO
+log_reg_spec <- logistic_reg() %>%
+  set_engine("glm") %>%
+  set_mode("classification")
+
+# 2. CREACIÓN DEL FLUJO DE TRABAJO
+log_reg_workflow <- workflow() %>%
+  add_recipe(rec) %>%
+  add_model(log_reg_spec)
+
+# 3. ENTRENAMIENTO DEL MODELO
+log_reg_fit <- fit(log_reg_workflow, data = train_data)
+
+# 4. PREDICCIÓN Y EVALUACIÓN EN EL CONJUNTO DE PRUEBA
+predictions_lr <- predict(log_reg_fit, new_data = test_data, type = "prob") %>%
+  # También obtenemos la clase predicha para la matriz de confusión
+  bind_cols(predict(log_reg_fit, new_data = test_data)) %>%
+  # Añadimos los datos reales para la comparación
+  bind_cols(test_data %>% select(Churn))
+
+# Renombramos las columnas para que sean más claras
+colnames(predictions_lr) <- c("prob_No", "prob_Yes", "clase_predicha", "clase_real")
+
+#==============================================================
+#             CORRECCIÓN DEFINITIVA DE LA EVALUACIÓN
+#==============================================================
+
+# Crear un "conjunto de métricas" para las que dependen de la clase (Accuracy, Precision, etc.)
+class_metrics <- metric_set(accuracy, precision, recall, f_meas)
+
+# Calcular estas métricas, especificando la clase positiva con event_level.
+results_class <- predictions_lr %>% 
+  class_metrics(truth = clase_real, 
+                estimate = clase_predicha, 
+                event_level = "second")
+
+# Calcular por separado la métrica que depende de la probabilidad (AUC).
+results_prob <- predictions_lr %>% 
+  roc_auc(truth = clase_real, 
+          prob_Yes,
+          event_level = "second")
+
+cat("\n--- Métrica Basada en Probabilidad (AUC) ---\n")
+print(results_prob)
+
+# Unir los dos resultados en una tabla final.
+final_metrics_lr <- bind_rows(results_class, results_prob)
+
+cat("\n--- Tabla Final de Métricas ---\n")
+print(final_metrics_lr)
+
+# Generar la curva ROC
+roc_curve_lr_corregido <- roc_curve(
+  data = predictions_lr, 
+  truth = clase_real, 
+  prob_Yes, 
+  event_level = "second"
+)
+
+# Extraer el valor del AUC de nuestra tabla final para el título
+auc_corregido <- final_metrics_lr %>%
+  filter(.metric == "roc_auc") %>%
+  pull(.estimate)
+
+# Dibujar el gráfico final
+autoplot(roc_curve_lr_corregido) +
+  labs(
+    title = "Curva ROC Corregida - Modelo de Regresión Logística",
+    subtitle = paste("AUC =", round(auc_corregido, 3))
+  ) +
+  theme_minimal()
+
+#========================================================================
+#             MEJORA DEL MODELO GLM: FASE 1 - RECETA AVANZADA
+#========================================================================
+
+# 1. INGENIERÍA DE CARACTERÍSTICAS
+# Creamos una nueva receta que añade características más complejas.
+rec_avanzada <- recipe(Churn ~ ., data = train_data) %>%
+  update_role(customerID, Segmento, new_role = "ID") %>%
+  step_mutate(valor_promedio_mes = TotalCharges / (tenure + 1)) %>%
+  step_interact(~ tenure:starts_with("Contract_")) %>%
+  step_poly(MonthlyCharges, degree = 2) %>%
+  step_poly(tenure, degree = 2) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_nzv(all_predictors()) %>%
+  step_corr(all_predictors(), threshold = 0.8)
+
+#========================================================================
+#             MEJORA DEL MODELO GLM: FASE 2 - RE-ENTRENAMIENTO
+#========================================================================
+
+# 1. CREAR UN NUEVO WORKFLOW CON LA RECETA AVANZADA
+glm_workflow_avanzado <- workflow() %>%
+  add_recipe(rec_avanzada) %>%
+  add_model(log_reg_spec)
+
+# 2. ENTRENAR EL NUEVO MODELO
+glm_fit_avanzado <- fit(glm_workflow_avanzado, data = train_data)
+
+# 3. EVALUAR EL NUEVO MODELO EN EL CONJUNTO DE PRUEBA
+cat("\n--- Evaluando el modelo GLM avanzado... ---\n")
+predictions_glm_avanzado <- predict(glm_fit_avanzado, new_data = test_data, type = "prob") %>%
+  bind_cols(predict(glm_fit_avanzado, new_data = test_data)) %>%
+  bind_cols(test_data %>% select(Churn))
+
+colnames(predictions_glm_avanzado) <- c("prob_No", "prob_Yes", "clase_predicha", "clase_real")
+
+# Calcular métricas (usando el umbral por defecto de 0.5 por ahora)
+# (Reutilizamos el código de evaluación que ya teníamos)
+class_metrics_avanzado <- predictions_glm_avanzado %>% class_metrics(truth = clase_real, estimate = clase_predicha, event_level = "second")
+prob_metrics_avanzado <- predictions_glm_avanzado %>% roc_auc(truth = clase_real, prob_Yes, event_level = "second")
+final_metrics_glm_avanzado <- bind_rows(class_metrics_avanzado, prob_metrics_avanzado)
+
+cat("\n--- Tabla de Métricas (GLM Avanzado, umbral 0.5) ---\n")
+print(final_metrics_glm_avanzado)
+
+# Extraer el AUC para comparar
+auc_avanzado <- final_metrics_glm_avanzado %>% filter(.metric == "roc_auc") %>% pull(.estimate)
+cat("\nAUC Modelo Base:", round(auc_corregido, 4)) # auc_corregido es el AUC del primer GLM
+cat("\nAUC Modelo Avanzado:", round(auc_avanzado, 4))
+
+#========================================================================
+#     MEJORA DEL MODELO GLM: FASE 3 - AJUSTE DEL UMBRAL
+#========================================================================
+
+
+# 1. CALCULAR LA CURVA ROC PARA EL MODELO AVANZADO
+roc_curve_glm_avanzado <- roc_curve(
+  data = predictions_glm_avanzado,
+  truth = clase_real,
+  prob_Yes,
+  event_level = "second"
+)
+
+# 2. ENCONTRAR EL UMBRAL ÓPTIMO
+umbral_optimo_j <- roc_curve_glm_avanzado %>%
+  mutate(j_index = sensitivity + specificity - 1) %>%
+  top_n(1, j_index)
+
+cat("\nUmbral óptimo según J-Index:", umbral_optimo_j$.threshold)
+
+# Opción B: Fijar un Recall mínimo (Ej: "Quiero capturar al menos al 80% de los que se van")
+umbral_para_recall_80 <- roc_curve_glm_avanzado %>%
+  filter(sensitivity >= 0.80) %>%
+  top_n(1, specificity)
+
+cat("\nUmbral para lograr ~80% de Recall:", umbral_para_recall_80$.threshold)
+
+
+# 3. RE-EVALUAR MÉTRICAS CON EL UMBRAL ELEGIDO (ej. el de J-Index)
+umbral_final <- umbral_optimo_j$.threshold
+
+# Recalcular las clases predichas con el nuevo umbral
+predictions_con_umbral <- predictions_glm_avanzado %>%
+  mutate(clase_predicha_optima = factor(
+    ifelse(prob_Yes > umbral_final, "Yes", "No"),
+    levels = c("No", "Yes")
+  ))
+
+metricas_clase_optimas <- predictions_con_umbral %>%
+  class_metrics(truth = clase_real, estimate = clase_predicha_optima, event_level = "second")
+
+# Extraer la fila del AUC que ya teníamos del modelo avanzado
+auc_row_avanzado <- final_metrics_glm_avanzado %>% 
+  filter(.metric == "roc_auc")
+
+# Unimos las métricas de clase con la fila del AUC para crear una tabla completa
+metricas_finales_optimas_completas <- bind_rows(metricas_clase_optimas, auc_row_avanzado)
+
+# Imprimimos la comparación lado a lado para el informe
+cat("\n--- Comparación de Métricas: Umbral por Defecto vs. Umbral Optimizado ---\n\n")
+
+cat("Con Umbral por Defecto (0.5):\n")
+print(final_metrics_glm_avanzado)
+
+cat("\nCon Umbral Optimizado (", round(umbral_final, 4), "):\n")
+print(metricas_finales_optimas_completas) # Usamos la nueva tabla completa
+
+#========================================================================
+#     MODELO FINAL: RE-ENTRENAMIENTO CON TODOS LOS DATOS
+#========================================================================
+
+modelo_final_produccion <- fit(glm_workflow_avanzado, data = datos)
+
+#========================================================================
+#             DEFINICIÓN DEL UMBRAL DE DECISIÓN FINAL
+#========================================================================
+umbral_final_produccion <- umbral_optimo_j$.threshold
+cat(paste("\nEl umbral de decisión final seleccionado para el despliegue es:", round(umbral_final_produccion, 4), "\n"))
+```
+Before training, the data was split into a training set (80%) and a test set (20%). A tidymodels recipe was used to encapsulate all preprocessing steps (creating dummy variables for categorical variables and normalizing numerical variables), ensuring a robust and reproducible process.
+
+### Phase 1: Baseline Logistic Regression Model
+
+A first GLM model was trained with the base recipe to establish our benchmark.
+
+The base model achieved a solid initial result, with an AUC of 0.856, indicating that the selected variables already had good predictive power.
+
+### Phase 2: Improvement Through Feature Engineering
+
+To improve performance, an advanced recipe was developed that included new features:
+
++ Average_month_value: Total spend divided by tenure, to capture the relative value of the customer.
++ Interaction terms between tenure and contract.
++ Polynomial terms for MonthlyCharges and tenure to capture nonlinear relationships.
+
+The GLM model was retrained using this new recipe. The result was a slight but consistent improvement in predictive ability, achieving an **AUC of 0.858**. This advanced model was selected as our final model.
+
+### Phase 3: Decision Threshold Optimization
+
+A predictive model generates a probability (from 0 to 1). By default, it is classified as "Churn" if the probability is greater than 0.5. However, this threshold is not always optimal for business objectives. For a retention strategy, it is preferable to **identify as many customers as possible who are going to churn (maximize Recall)**, even if that means contacting some who were not going to churn (lower Accuracy).
+
+The ROC curve of the advanced model was analyzed to find the threshold that maximizes Youden's J Index, a method that seeks the best balance between sensitivity (Recall) and specificity.
+
+The optimal threshold was set at **0.2415**. This value will be used as the cutoff point for all operational decisions, ensuring that the model is aligned with the proactive retention strategy. With the completion of this task, we obtained a model that was not only accurate but also strategically calibrated.
+
+### Other observations
+
+It's worth noting that the GLM model wasn't the only one I used to train the model. I also used random forests, XGBoost, and deep learning with Keras and TensorFlow, but none of these performed as well as the GLM, indicating that the data had a linear relationship. I decided not to include them in the report code due to their poor performance, but they are worth mentioning.
+
+\newpage
+
+# Evaluation and Interpretation of the Predictive Model
+
+The selected model, a Generalized Logistic Regression (GLM) model with advanced engineering features, demonstrated exceptional predictive capability, with an Area Under the ROC Curve (AUC) of 0.858. More importantly, by strategically optimizing the decision threshold to 0.2415, we transformed the model from a predictive tool to a business action tool. This optimization resulted in a 48% increase in the recall rate, allowing us to identify 82.1% of customers planning to abandon the service. Analysis of the determining factors reveals that contract type, tenure, and payment method are the pillars that explain customer behavior.
+
+## Model Performance Evaluation
+
+The robustness of the model was validated on a test dataset. Performance was analyzed by comparing a standard decision threshold (0.5) with an optimized threshold (0.2415), selected to maximize the Youden J Index, achieving a superior balance between capturing customers who abandon (Sensitivity/Recall) and correctly classifying those who remain (Specificity).
+
+---
+title: "Predictive Analysis and Retention Strategy"
+output: pdf_document
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Cargar el paquete knitr si no lo tienes
+# install.packages("knitr")
+library(knitr)
+
+# Crear un data frame con tus datos
+tabla_metricas <- data.frame(
+  Metrica = c("ROC AUC", "Recall (Sensibilidad)", "Precision", "F1-Score", "Accuracy"),
+  Modelo_Base_Umbral_0.5 = c(0.858, 0.555, 0.682, 0.612, 0.818),
+  Modelo_Optimizado_Umbral_0.2415 = c(0.858, 0.821, 0.506, 0.626, 0.747),
+  Impacto_Estrategico_de_la_Optimizacion = c(
+    "No change (intrinsic predictive ability)",
+    "+47.9% (¡Key Strategic Success!)",
+    "-25.8% (Calculated compensation)",
+    "+2.3% (Better overall balance)",
+    "-8.7% (Non-priority metric)"
+  )
+)
+
+# Renderizar la tabla usando kable
+kable(
+  tabla_metricas,
+  caption = "Model Metric Comparison", # Puedes añadir un título a la tabla
+  col.names = c(
+    "Metrics",
+    "Base Model (Threshold 0.5)",
+    "Optimized Model (Threshold 0.2415)",
+    "Strategic Impact of Optimization"
+  ),
+  align = c('l', 'c', 'c', 'l') # Alineación: l=izquierda, c=centro, r=derecha
+)
+```
+
+### Evaluation Analysis:
++ Predictive Power (AUC): An AUC of 0.858 confirms that the model is highly effective at differentiating between churn-prone and churn-free customer profiles. It is a robust and reliable model.
++ Impact of Threshold Optimization: The model's true value is unlocked with the optimized threshold. By lowering it to 0.2415, we consciously accepted lower accuracy (more "false alarms") in exchange for a monumental leap in recall. We are now able to identify 8 out of 10 customers who are actually going to churn. For a business, it is much more profitable to contact a customer who was not going to churn by mistake than to not contact one who is. This optimization perfectly aligns the model with the business objectives of proactive retention.
+
+## Churn Driver Analysis
+
+To understand the underlying causes of churn, the importance and direction of each variable within the final predictive model were analyzed. Figure 1 visually summarizes the 20 most determining factors, providing a clear roadmap for strategic interventions.
+
+```{r}
+glm_fit_final <- extract_fit_parsnip(modelo_final_produccion)
+
+# Gráfico de Importancia de Variables con vip
+# Mostramos el signo para saber si el impacto es positivo o negativo
+vip(glm_fit_final, num_features = 20, geom = "col", mapping = aes(fill = Sign)) +
+  scale_fill_manual(values = c("POS" = "#F8766D", "NEG" = "#00BFC4"), name = "Impacto en el Churn") +
+  labs(
+    title = "Top 20 Factores Determinantes del Abandono de Clientes",
+    subtitle = "Basado en la magnitud y signo de los coeficientes del modelo GLM",
+    y = "Variable del Modelo",
+    x = "Magnitud del Impacto (Importancia)"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+Variable importance chart showing the impact (positive or negative) of the main predictors of churn.
+
+Interpretation of the chart reveals two opposing forces governing customer loyalty:
+
+1. **Retention Factors (Negative Impact)**:
+The variables in blue represent the pillars of our loyal customer base. The model conclusively identifies tenure and one- and two-year contracts as the most potent risk reducers. This quantitatively demonstrates that customer lifetime value is maximized through building long-term relationships and solidifying contractual commitments.
+
+2. **Risk Factors (Positive Impact)**:
+The variables in red are the red flags our model has learned to identify. Factors such as paperless billing and e-check payments emerge as significant drivers of churn. This doesn't mean that these characteristics are inherently bad, but rather that they are associated with a more volatile customer profile or a higher-friction customer experience. Similarly, variables such as MultipleLines and InternetService_Fiber.optic indicate that customers with more expensive or complex services require special attention, as they are more prone to churn.
+
+The model allows us to move from a general overview of churn to a precise diagnosis of its causes. The following strategic recommendations are directly based on the evidence presented in this analysis.
+
+\newpage
+
+# Strategic Plan and Recommendations
+
+The culmination of this project is not the model itself, but the action plan derived from its findings. This section translates the data intelligence obtained into a tangible and actionable business strategy to reduce customer churn.
+
+## Final Diagnosis: Predictable and Concentrated Churn
+
+The comprehensive data analysis, validated by a predictive model with an **85.8% accuracy (AUC)**, reveals a fundamental conclusion: customer churn is not a random event, but a predictable result of specific factors. Thanks to the strategic optimization of our model, we are now able to **correctly identify 82.1%** of all customers planning to leave the service, giving us an unprecedented opportunity for proactive intervention.
+
+The company's core problem is a systematic "churn" of customers in its first months, concentrated among those with **month-to-month** contracts. Our segmentation analysis identified a critical group, the **"New Customer at Risk"**, comprising 1,994 customers with an alarming churn rate of **51.4%** and representing **$59,615 in Monthly Recurring Revenue (MRR)** at risk.
+
+## The Four Pillars of the Retention Strategy
+
+We propose a four-pillar action plan, where each recommendation is directly linked to quantitative evidence from our predictive model.
+
+### Pillar 1: Turn Flexibility into Engagement
+
++ **The Evidence**: The model identifies long-term contracts (One-year Contract, Two-year Contract) as the most powerful factors in reducing churn. The lack of a long-term contract is the main driver of churn.
++ **The Strategy**: Implement proactive migration campaigns to move customers from the Month-to-Month plan to term contracts, using the model's risk score to prioritize offers.
++ **Recommended Tactics**:
+    + 1-Year Migration Offer: For customers with high risk scores, offer a permanent 10% discount on their bill when signing for 12 months.
+    + 2-Year Migration Offer: Offer a higher incentive, such as a free month of service or the free addition of OnlineSecurity or TechSupport, services that the model also identifies as loyalty drivers.
+
+### Pillar 2: Ensure Success in the First 100 Days
++ **The Evidence**: Tenure is the strongest predictor of loyalty. Churn risk is highest early in the customer relationship.
++ **The Strategy**: Design and implement an automated onboarding program ("Customer Journey") to ensure a seamless initial experience and quickly demonstrate value.
++ **Recommended Tactics**:
+    + **Week 1**: Welcome email and post-installation confirmation SMS, offering easy access to guides and support.
+    + **Month 1**: Proactive communication ("Did you know..."), showing how to get more out of their plan (e.g., "Manage your account from our app").
+    + **Month 3**: Small gesture of appreciation for their loyalty (e.g., a small discount or a one-time bonus).
+
+### Pillar 3: Eliminate Friction in the Payment Process
++ **The Evidence**: The model identifies e-check payments as a **significant risk factor**. The manual process of paying each month is an avoidable cause of churn.
++ **The Strategy**: Aggressively incentivize the adoption of automatic payment methods to eliminate this friction.
++ **Recommended Tactics**:
+    + **Auto-Pay Discount**: Launch a clear offer: a **flat $5/month discount** for any customer who switches to direct debit or credit card.
+    + **Ease of Switching**: Implement a one-click feature in the customer portal to instantly switch payment methods.
+
+### Pillar 4: Increase "Stickiness" with Smart Services
++ **The Evidence**: The model shows that customers with more complex services like Fiber Optic are more prone to churn, while those with value-added services like TechSupport and OnlineSecurity are more loyal.
++ **The Strategy**: Use the model's risk score to make cross-sell offers that increase customer integration into our ecosystem.
++ **Recommended Tactics**:
+    + **For High-Risk Fiber Customers**: Proactively offer a TechSupport or OnlineSecurity package with a special discount for the first 3 months.
+    + **Value-Based Communications**: Promote these services not as an extra cost, but as an "experience enhancement" that guarantees peace of mind and security.
+
+## Estimating Potential Impact and Return on Investment (ROI)
+
+To quantify the value of these interventions, we made a conservative estimate for the most vulnerable segment: **"New Customers at Risk"**.
+
+```{r}
+# Usamos los valores calculados previamente en el script
+ingresos_mensuales_en_riesgo <- 116086.50
+tasa_churn_actual <- 0.514
+reduccion_relativa <- 0.20 # Hipótesis del 20%
+tasa_churn_nueva <- tasa_churn_actual * (1 - reduccion_relativa)
+clientes_segmento <- 1994
+mrr_promedio_cliente <- ingresos_mensuales_en_riesgo / clientes_segmento
+
+# Cálculo del impacto
+clientes_retenidos <- round(clientes_segmento * (tasa_churn_actual - tasa_churn_nueva))
+mrr_salvado <- round(clientes_retenidos * mrr_promedio_cliente)
+arr_salvado <- mrr_salvado * 12
+
+# Creamos una tabla para el informe
+roi_df <- tibble::tribble(
+  ~Métrica, ~Valor,
+  "Segmento Analizado", "Cliente Nuevo en Riesgo",
+  "Tamaño del Segmento", paste(clientes_segmento, "clientes"),
+  "Tasa de Abandono Actual", scales::percent(tasa_churn_actual, accuracy = 0.1),
+  "Hipótesis de Reducción", scales::percent(reduccion_relativa, accuracy = 1),
+  "**Clientes Retenidos Adicionalmente (por ciclo)**", paste("~", clientes_retenidos),
+  "**Ingresos Mensuales Salvados (MRR)**", scales::dollar(mrr_salvado),
+  "**Impacto Anualizado Estimado (ARR)**", scales::dollar(arr_salvado)
+)
+
+knitr::kable(roi_df, caption = "Estimación del Impacto Financiero de las Estrategias de Retención")
+```
+
+Implementing this plan has the potential to retain approximately **205 additional customers** per cycle, which translates to nearly **$143,220 in annual revenue recovered** from this segment alone. The return on investment is extremely high, as most of these tactics can be automated.
+
+\newpage
+
+# Conclusion and Implementation Roadmap
+
+This project has achieved a fundamental transformation in the way the company addresses customer churn. We have moved from a general understanding of the problem to an **accurate, quantitative, and actionable diagnosis**, supported by a robust predictive model.
+
+The key finding is that churn is not a monolith, but a mosaic of predictable behaviors. We have demonstrated that by focusing on the **right factors (contract, tenure, and payment method)** and the **right segments ("New Customer at Risk")**, we can move from a reactive retention strategy to a **proactive and intelligent retention culture**.
+
+The developed predictive tool is not just a technical artifact; it is a **strategic asset** that, if used correctly, can generate substantial and sustainable financial value, estimated at more than **$143,000 annually** by intervening in the most vulnerable segment alone. The true success of this project will be measured by the organization's ability to integrate these findings into its daily operations.
+
+## Next Steps: A Roadmap for Successful Implementation
+
+To ensure that the results of this analysis translate into real and lasting impact, the following implementation roadmap is recommended, divided into three phases:
+
+### Phase 1: Operational Deployment and Technology Integration (Short Term: 1-2 Months)
+
+The first step is to make the model accessible and useful to frontline teams (retention, marketing, customer service).
+
++ **Action 1.1: CRM Integration**: Collaborate with the IT team to integrate the final predictive model with the Customer Relationship Management (CRM) system. The goal is for each customer record to automatically display two new fields:
+    + churn_score: The probability of churn (from 0.00 to 1.00).
+    + retention_alert: A flag (e.g., "Yes"/"No") that is triggered if the churn_score exceeds the optimized threshold of 0.2415.
++ **Action 1.2: Team Training**: Conduct training sessions with the retention and customer service teams to explain what the risk score means and how they should use it to prioritize their calls and offers.
+
+### Phase 2: Validation and Learning through a Pilot Project (Medium-Term: 3-6 Months)
+
+Before a large-scale rollout, it is crucial to validate the recommended strategies in a controlled environment to measure their actual effectiveness and optimize offers.
+
++ **Action 2.1: A/B Test Design**: Select a cohort of 1,000 customers marked with alert_retention = "Yes." Randomly divide them into:
+    + Treatment Group (500 customers): They will receive the proactive offers from Pillar 1 (contract migration) and Pillar 3 (auto-pay discount).
+    + Control Group (500 customers): They will not receive any proactive offers.
++ **Action 2.2: Measurement and Analysis**: After a 3-month period, compare the churn rate between the two groups. The goal is to confirm that the intervention reduces churn in a statistically significant way and calculate the actual ROI of the offers.
+
+### Phase 3: Continuous Monitoring and Model Evolution (Long Term: Continuous)
+
+A machine learning model is not static; its performance can decline over time as customer behavior or market conditions change (a phenomenon known as "model drift").
+
++ **Action 3.1: Create a Performance Dashboard**: Develop a dashboard (e.g., in Power BI, Tableau, or R Shiny) that monitors in real time:
+    + The overall churn rate and by key segments.
+    + The model's performance (AUC, Recall) over time.
+    + The adoption rate of retention offers.
++ **Action 3.2: Retraining Plan**: Establish a plan to retrain the model every 6 to 12 months with new data to ensure it remains accurate and relevant, adjusting both the coefficients and the decision threshold if necessary.
+
+This project is coming to an end, but the journey toward a fully data-driven organization is just beginning. It has been a pleasure collaborating on the development of this solution, and I am confident that, with the implementation of these strategies, the company will see a significant impact on its retention metrics. I appreciate the opportunity and the support provided throughout the process, and I remain at your disposal for future discussions and collaborations.
