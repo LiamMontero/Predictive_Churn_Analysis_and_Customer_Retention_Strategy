@@ -6,6 +6,7 @@ library(tidymodels)
 library(yardstick)
 library(dplyr)
 library(vip)
+library(patchwork) 
 
 set.seed(123)
 
